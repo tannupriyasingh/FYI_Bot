@@ -14,7 +14,8 @@ from computation import tfidf as tf
 PATH_SLACK_DUMP = '../slack_dump'
 JSON_FILE_NAME = 'fyi.json'
 TSV_FILE_NAME = 'fyi.tsv'
-TEXT_FILE_NAME = 'bow.txt'
+TEXT_FILE_NAME = 'tfidf.txt'
+BOW_FILE_NAME = 'bow.txt'
 
 
 def create_dir(dir_name):
@@ -30,10 +31,15 @@ def timestamp_as_str():
 
 
 def get_text_from_json_obj(json_obj):
+    text_field = None
     if 'attachments' in json_obj:
-        return json_obj['attachments'][0]['text'], json_obj['attachments'][0]
-    if 'text' in json_obj:
-        return json_obj['text'], json_obj
+        text_field = json_obj['attachments'][0]['text']
+    elif 'text' in json_obj:
+    	text_field = json_obj['text']
+
+    return text_field.lower(), json_obj
+    #return text_field, json_obj
+
 
 
 def read_dumped_json(dump_data_path):
@@ -57,15 +63,21 @@ def process_json_write_as_tsv(json_obj, tsv_name):
 	df['id'] = df.reset_index().index
 	df = df[['id', 'data', 'json']]
 	df.to_csv(tsv_name, sep = '\t', index = False)
-	print(preprocessing())
 
 
+
+def list_dict_to_json(list_dict):
+	json_obj = {}
+	for i in range(len(list_dict)):
+		json_obj[i] = list_dict[i]
+	return json_obj
 
 def preprocessing():
 	print(dump_data_path / TSV_FILE_NAME)
 	raw_data = pd.read_csv(dump_data_path / TSV_FILE_NAME, sep  = '\t', header = 0)
 	print("Updated raw_data")
-	#makeing bag of words
+	
+	#making bag of words
 	all_unique_words = set()
 	for x in raw_data.data:
 		all_unique_words = all_unique_words.union(set(x.split(" ")))
@@ -73,10 +85,14 @@ def preprocessing():
 
 	list_word_freq_ht, tfidf_res = get_tfidf(raw_data.data.tolist(), all_unique_words)
 	
-	with open(dump_data_path / TEXT_FILE_NAME, 'w+') as bow:
-		bow.write(str(tfidf_res))
-		bow.close()
-	return "data stored"
+	json_obj = list_dict_to_json(tfidf_res)	
+
+	with open(dump_data_path / TEXT_FILE_NAME, 'w', encoding='utf-8') as f_handle:
+		json.dump(json_obj, f_handle, ensure_ascii=False, indent=2)
+
+	with open(dump_data_path / BOW_FILE_NAME, 'w') as f_handle:
+		f_handle.write('|'.join(list(all_unique_words)))
+	
 
 def get_tfidf(list_of_sentences, unique_words):
     list_word_freq_ht = list()
@@ -111,6 +127,7 @@ if __name__ == "__main__":
   		json_obj = read_dumped_json(dump_data_path)
   		tsv_name = dump_data_path / TSV_FILE_NAME
   		process_json_write_as_tsv(json_obj, tsv_name)
+  		preprocessing()
   		time.sleep(dump_every) 
   		
 

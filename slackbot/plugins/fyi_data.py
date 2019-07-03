@@ -5,22 +5,21 @@ import random
 from slackbot.bot import respond_to
 from slackbot.bot import listen_to
 import pandas as pd
-import computation.tfidf as tf
-import re
+import os
+import json
 
+# def update_data():
+#     #loading stored data in a frame
+#     raw_data = pd.read_csv('pinned_infra.tsv', sep  = '\t', header = 0)
+#     print("Updated raw_data")
 
-def update_data():
-    #loading stored data in a frame
-    raw_data = pd.read_csv('pinned_infra.tsv', sep  = '\t', header = 0)
-    print("Updated raw_data")
+#     #makeing bag of words
+#     all_unique_words = set()
+#     for x in raw_data.Data:
+#         all_unique_words = all_unique_words.union(set(x.split(" ")))
+#     print(f"number of unique words: {len(all_unique_words)}")
 
-    #makeing bag of words
-    all_unique_words = set()
-    for x in raw_data.Data:
-        all_unique_words = all_unique_words.union(set(x.split(" ")))
-    print(f"number of unique words: {len(all_unique_words)}")
-
-    return all_unique_words, raw_data
+#     return all_unique_words, raw_data
 
 
 # @respond_to(u'? (.*)')
@@ -33,81 +32,113 @@ def update_data():
 #         message.reply('Sorry I am not sure of:{}'.format(something))
 
 
+def retrive_tfIDF():
+    directory = '/Users/tannupriya/Infrastructure_Projects/FYIBot/FYI_Bot/slack_dump'
+    dirName = max([os.path.join(directory,d) for d in os.listdir(directory) if not d.startswith('.')], key=os.path.getmtime)
+    tfidf_res = list()
+
+
+
+    print('dirname: ', dirName)
+
+    with open(dirName + '/tfidf.txt', 'r') as f_handle:
+        json_obj = json.load(f_handle)
+        for key in json_obj.keys():
+            tfidf_res.append(json_obj[key])
+
+    raw_data = pd.read_csv(dirName + '/fyi.tsv', sep  = '\t', header = 0)
+    return tfidf_res, raw_data
+
 @respond_to('Give me (.*)', re.IGNORECASE)
-def giveme(message, something):
-    all_unique_words, raw_data = update_data() 
-    list_word_freq_ht, tfidf_res = get_tfidf(raw_data.Data.tolist(), all_unique_words)
-    response = get_best_response_based_on_tfidf_score(raw_data, tfidf_res, something)
+def giveme(message, query):
+    #query = query.lower()
+    tfidf_res, raw_data = retrive_tfIDF()
+    #all_unique_words, raw_data = update_data() 
+    #list_word_freq_ht, tfidf_res = get_tfidf(raw_data.Data.tolist(), all_unique_words)
+    response = get_best_response_based_on_tfidf_score(raw_data, tfidf_res, query)
     if response:
         message.reply('Here is what you are looking for: \n{}'.format(response), in_thread=True)
     else:
-        message.reply('Sorry I am not sure of:{}'.format(something), in_thread=True)
+        message.reply('Sorry I am not sure of:{}'.format(query), in_thread=True)
 
-#get tfidf rank of sentences
-def get_tfidf(list_of_sentences, unique_words):
-    list_word_freq_ht = list()
-    tf_score_list = list()
-    empty_ht = dict.fromkeys(list(unique_words), 0)
-    for l in list_of_sentences:
-        ht = empty_ht.copy()
-        bow = set(l.split(' '))
+# #get tfidf rank of sentences
+# def get_tfidf(list_of_sentences, unique_words):
+#     list_word_freq_ht = list()
+#     tf_score_list = list()
+#     empty_ht = dict.fromkeys(list(unique_words), 0)
+#     for l in list_of_sentences:
+#         ht = empty_ht.copy()
+#         bow = set(l.split(' '))
 
-        for w in l.split(' '):
-            ht[w] += 1
+#         for w in l.split(' '):
+#             ht[w] += 1
 
-        tf_score_list.append(tf.computeTF(ht, bow))        
-        list_word_freq_ht.append(ht)
+#         tf_score_list.append(tf.computeTF(ht, bow))        
+#         list_word_freq_ht.append(ht)
         
-    idfs = tf.computeIDf(list_word_freq_ht)
-    res = [tf.computeTFIDF(x, idfs) for x in tf_score_list]
+#     idfs = tf.computeIDf(list_word_freq_ht)
+#     res = [tf.computeTFIDF(x, idfs) for x in tf_score_list]
     
-    return list_word_freq_ht, res
+#     return list_word_freq_ht, res
+
+def check_keyword_exists_or_not(word, tfidf_res):
+    for tfidf_score in tfidf_res:
+        if word in tfidf_score:
+            return True
+    return False
+
 
 #get the best response for query
-def get_best_response_based_on_tfidf_score(data, tfidf_res, query):
-    tf_score_query_list_sum = [0] * data.shape[0]
+def get_best_response_based_on_tfidf_score(raw_data, tfidf_res, query):
+    tf_score_query_list_sum = [0] * raw_data.shape[0]
     for w in query.split(" "):
-        print(w)
+        w = w.lower()
+
+        if not check_keyword_exists_or_not(w, tfidf_res):
+            return
+
         tf_score_query_list = [tfidf_score[w] for tfidf_score in tfidf_res]
+
         tf_score_query_list_sum = [x + y for x, y in zip(tf_score_query_list_sum, tf_score_query_list)]
-    return data.Data[tf_score_query_list_sum.index(max(tf_score_query_list_sum))]
+    print(raw_data.json[tf_score_query_list_sum.index(max(tf_score_query_list_sum))])
+    response = raw_data.data[tf_score_query_list_sum.index(max(tf_score_query_list_sum))]
+    return response
 
+# @respond_to('store (.*)', re.IGNORECASE)
+# def store_data(message, something):
+#     print("inside store")
+#     acknowledge = store_data(something)
+#     print(acknowledge)
+#     message.react('thumbsup')
+#     message.react('fyi')
+# #fuction to store data in excel sheet
 
-@respond_to('store (.*)', re.IGNORECASE)
-def store_data(message, something):
-    print("inside store")
-    acknowledge = store_data(something)
-    print(acknowledge)
-    message.react('thumbsup')
-    message.react('fyi')
-#fuction to store data in excel sheet
-
-def store_data(something):
-    print("inside_Storedata")
-    with open('pinned_infra.tsv','r') as tsv:
-        next(tsv)
-        AoA = [line.strip().split('\t') for line in tsv]
-    ID_list = list()
-    for a in AoA:
-        ID_list.append(int(a[0]))
-    ID = max(ID_list)
-    tsv.close()
-    data_csv = open('pinned_infra.tsv', 'a')
-    with data_csv:
-        writer = csv.writer(data_csv, delimiter="\t")
-        print(f"Id value: {ID}")
-        print(f"something: {something}")
-        ID += 1
-        print(f"id updated {ID}")
-        row = []
-        row.append(ID)
-        row.append(something)
-        print(row)
-        writer.writerow(row)
-        print(something)
-        ack = "data stored"
-    data_csv.close()
-    return ack
+# def store_data(something):
+#     print("inside_Storedata")
+#     with open('pinned_infra.tsv','r') as tsv:
+#         next(tsv)
+#         AoA = [line.strip().split('\t') for line in tsv]
+#     ID_list = list()
+#     for a in AoA:
+#         ID_list.append(int(a[0]))
+#     ID = max(ID_list)
+#     tsv.close()
+#     data_csv = open('pinned_infra.tsv', 'a')
+#     with data_csv:
+#         writer = csv.writer(data_csv, delimiter="\t")
+#         print(f"Id value: {ID}")
+#         print(f"something: {something}")
+#         ID += 1
+#         print(f"id updated {ID}")
+#         row = []
+#         row.append(ID)
+#         row.append(something)
+#         print(row)
+#         writer.writerow(row)
+#         print(something)
+#         ack = "data stored"
+#     data_csv.close()
+#     return ack
 
 
 # @respond_to(react('fyi'))

@@ -31,3 +31,7 @@ def computeTFIDF(tfbow,idfs):
     for word,val in tfbow.items():
         tfidf[word] = val* idfs[word]
     return tfidf
+
+
+if __name__ == "__main__":
+    pass
